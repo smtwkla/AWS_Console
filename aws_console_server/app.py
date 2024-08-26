@@ -1,17 +1,19 @@
-import pprint
-
-from flask import Flask, render_template
+from flask import Flask, render_template, url_for, redirect, request, abort
 import os
 import boto3
-from botocore.exceptions import ClientError
-from werkzeug.serving import connection_dropped_errors
-
-from Instance import Instance
 from typing import List
+import pprint
+import logging
+
+
+from Instance import Instance, ActionsOnInstances
+from Instance import ActionsOnInstances as Actions, InstanceStates as States, ActionStrings
+import settings
+
 
 aws_config = {}
 client = None
-instance_list:List[Instance] = []
+
 
 
 def load_aws_config():
@@ -26,47 +28,109 @@ def connect_to_boto():
 
 
 def load_controlled_instance_list():
-    global instance_list
+    instance_list:List[Instance] = []
 
     reservations = client.describe_instances( Filters=[
-                                    {'Name': 'tag-key', 'Values': ['AWS_Web_Console_Controlled']}
+                                    {'Name': 'tag-key', 'Values': [settings.EC2_TAG_NAME]}
                                 ])['Reservations']
     instances = [y for x in reservations for y in  x['Instances']]
     for i in instances:
         cur_inst = Instance()
         cur_inst.InstanceId = i['InstanceId']
         cur_inst.InstanceType = i["InstanceType"]
+
         for t in i['Tags']:
             if t['Key'] == 'Name':
                 cur_inst.InstanceName = t['Value']
+            if t['Key'] == settings.EC2_TAG_NAME:
+                cur_inst.PermissionString = t['Value']
         instance_list.append(cur_inst)
+    return instance_list
 
 
-
-def load_instance_status():
-    status_resp = client.describe_instance_status(InstanceIds=[x.InstanceId for x in instance_list])
+def load_instance_status(il):
+    to_check = [x.InstanceId for x in il]
+    status_resp = client.describe_instance_status(InstanceIds=to_check, IncludeAllInstances=True)
     status = status_resp['InstanceStatuses']
     for instance in status:
-        for i in instance_list:
+        for i in il:
             if i.InstanceId == instance["InstanceId"]:
                 i.InstanceState = instance["InstanceState"]["Name"]
                 i.InstanceStateCode = instance["InstanceState"]["Code"]
 
 
+def load_instance_allowed_actions(il):
+
+    for i in il:
+        allowed = ""
+        if i.InstanceStateCode == States.STOPPED.value:
+            allowed = allowed + Actions.START
+            allowed = allowed + Actions.TERMINATE
+
+        if i.InstanceStateCode == States.RUNNING.value:
+            allowed = allowed + Actions.SHUTDOWN
+
+        i.ApplicableActions = allowed
+
+
 def start_ec2_instance(instance):
-    pass
+    logging.info(f"Start {instance}")
 
 
 def stop_ec2_instance(instance):
-    pass
+    logging.info(f"Shutdown {instance}")
+
+
+def terminate_ec2_instance(instance):
+    logging.info(f"Terminate {instance}")
 
 
 app = Flask(__name__)
 
-@app.route("/")
-def hello_world():
+
+def boot_strap():
     load_aws_config()
     connect_to_boto()
-    load_controlled_instance_list()
-    load_instance_status()
-    return render_template('console.html', instances=instance_list)
+    il = load_controlled_instance_list()
+    load_instance_status(il)
+    load_instance_allowed_actions(il)
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.INFO)
+    return il
+
+
+@app.route("/")
+def index():
+    il = boot_strap()
+    return render_template('console.j2', instances=il)
+
+@app.route("/action", methods=['GET'])
+def do_action():
+    il = boot_strap()
+    action_str = request.args.get('action', '').capitalize()
+    instance_id = request.args.get('id', '')
+    logging.debug(f"action_str: {action_str} on {instance_id}")
+
+    instance = None
+    for i in il:
+        if i.InstanceId == instance_id:
+            instance = i
+            break
+    if not instance:
+        abort(400)
+
+    action = ActionStrings.get(action_str, None)
+    if not action:
+        abort(400)
+
+    if not instance.check_permission(action):
+        abort(405)
+
+    if action == Actions.START:
+        start_ec2_instance(instance_id)
+    elif action == Actions.SHUTDOWN:
+        stop_ec2_instance(instance_id)
+    elif action == Actions.TERMINATE:
+        terminate_ec2_instance(instance_id)
+
+    return redirect(url_for('index'))

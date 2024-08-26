@@ -1,0 +1,1 @@
+EC2_TAG_NAME = "AWS_Web_Console_Controlled"

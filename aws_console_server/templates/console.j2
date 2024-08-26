@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css"
+      rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC"
+      crossorigin="anonymous">
+<title>AWS Web Console</title>
+</head>
+<body>
+    <h1>AWS Web Console</h1>
+    <table class="table">
+        <tr>
+            <th scope="col">#</th>
+            <th scope="col">Instance ID</th>
+            <th scope="col">Type</th>
+            <th scope="col">Name</th>
+            <th scope="col">State</th>
+            <th scope="col">Action</th>
+        </tr>
+    {% for i in instances %}
+        <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ i.InstanceId }}</td>
+            <td>{{ i.InstanceType }}</td>
+            <td>{{ i.InstanceName }} ({{ i.PermissionString }})</td>
+            <td>{{ i.InstanceState }} ({{i.InstanceStateCode}})</td>
+        {%  macro act_href(id, act) -%}
+            <a href="action?id={{ id }}&action={{ act }}">{{ act }}</a>
+        {%- endmacro %}
+            <td>{% if i.check_permission('S') %} {{ act_href(i.InstanceId, "Start") }} {% endif %}
+                {% if i.check_permission('H') %} {{ act_href(i.InstanceId, "Stop") }} {% endif %}
+                {% if i.check_permission('T') %} {{ act_href(i.InstanceId, "Terminate") }} {% endif %}</td>
+        </tr>
+    {% endfor %}
+    </table>
+</body>
+</html>
