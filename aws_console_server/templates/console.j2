@@ -8,6 +8,15 @@
 </head>
 <body>
     <h1>AWS Web Console</h1>
+    {%  if msg_alert is defined and msg_alert is string %}
+    <div class="alert alert-danger" role="alert">{{ msg_alert }}</div>
+    {% endif %}
+
+    {%  if msg_info is defined and msg_info is string%}
+    <div class="alert alert-success" role="alert">{{ msg_info }}</div>
+    {% endif %}
+
+
     <table class="table">
         <tr>
             <th scope="col">#</th>

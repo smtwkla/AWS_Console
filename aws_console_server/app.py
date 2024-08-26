@@ -1,6 +1,11 @@
-from flask import Flask, render_template, url_for, redirect, request, abort
+from warnings import catch_warnings
+
+
+from flask import Flask, render_template, url_for, redirect, request, abort, session
 import os
 import boto3
+from botocore.exceptions import ClientError
+
 from typing import List
 import pprint
 import logging
@@ -13,7 +18,6 @@ import settings
 
 aws_config = {}
 client = None
-
 
 
 def load_aws_config():
@@ -74,18 +78,38 @@ def load_instance_allowed_actions(il):
 
 
 def start_ec2_instance(instance):
-    logging.info(f"Start {instance}")
+    msg = f"Starting {instance}..."
+    logging.info(msg)
+    try:
+        response = client.start_instances(InstanceIds=[instance.InstanceId])
+    except ClientError as e:
+        resp_text = e.response['Error']['Message']
+        return False, resp_text
+    return True, msg
 
 
 def stop_ec2_instance(instance):
-    logging.info(f"Shutdown {instance}")
+    logging.info(msg:=f"Shutting down {instance}...")
+    try:
+        response = client.stop_instances(InstanceIds=[instance.InstanceId])
+    except ClientError as e:
+        resp_text = e.response['Error']['Message']
+        return False, resp_text
+    return True, msg
 
 
 def terminate_ec2_instance(instance):
-    logging.info(f"Terminate {instance}")
+    logging.info(msg := f"Terminating {instance}...")
+    try:
+        response = client.terminate_instances(InstanceIds=[instance.InstanceId])
+    except ClientError as e:
+        resp_text = e.response['Error']['Message']
+        return False, resp_text
+    return True, msg
 
 
 app = Flask(__name__)
+app.secret_key = os.environ['FLASK_KEY']
 
 
 def boot_strap():
@@ -102,10 +126,15 @@ def boot_strap():
 @app.route("/")
 def index():
     il = boot_strap()
-    return render_template('console.j2', instances=il)
+    msg_info = session.pop('msg_info', default=None)
+    msg_alert = session.pop('msg_alert', default=None)
+
+    return render_template('console.j2', instances=il, msg_info=msg_info, msg_alert=msg_alert)
 
 @app.route("/action", methods=['GET'])
 def do_action():
+    session.pop('msg_info', None)
+    session.pop('msg_alert', None)
     il = boot_strap()
     action_str = request.args.get('action', '').capitalize()
     instance_id = request.args.get('id', '')
@@ -127,10 +156,14 @@ def do_action():
         abort(405)
 
     if action == Actions.START:
-        start_ec2_instance(instance_id)
+        result, msg = start_ec2_instance(instance)
     elif action == Actions.SHUTDOWN:
-        stop_ec2_instance(instance_id)
+        result, msg = stop_ec2_instance(instance)
     elif action == Actions.TERMINATE:
-        terminate_ec2_instance(instance_id)
+        result, msg = terminate_ec2_instance(instance)
+
+
+    session['msg_info'] = msg if result else None
+    session['msg_alert'] = msg if not result else None
 
     return redirect(url_for('index'))
