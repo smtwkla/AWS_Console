@@ -1,0 +1,19 @@
+{% extends "base.j2" %}
+
+{% block messages %}
+        {%  if login_alert is defined and login_alert is string%}
+        <div class="alert alert-danger" role="alert">{{ login_alert }}</div>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    <form name="login" id="frm-login" action="login" method="post">
+        <label> Username:
+            <input type="text" id="user" name="user" value="admin" size="25">
+        </label>
+        <label> Password:
+            <input type="password" id="pwd" name="pwd" value="" size="25">
+        </label>
+        <input type="submit" value="submit">
+    </form>
+{% endblock %}

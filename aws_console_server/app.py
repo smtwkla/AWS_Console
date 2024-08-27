@@ -133,6 +133,9 @@ def index():
 
 @app.route("/action", methods=['GET'])
 def do_action():
+    if session.get('user') is None:
+        return redirect(url_for('do_login'))
+
     session.pop('msg_info', None)
     session.pop('msg_alert', None)
     il = boot_strap()
@@ -166,4 +169,28 @@ def do_action():
     session['msg_info'] = msg if result else None
     session['msg_alert'] = msg if not result else None
 
+    return redirect(url_for('index'))
+
+
+@app.route("/login", methods=['GET', 'POST'])
+def do_login():
+    if request.method == 'GET':
+        login_alert=session.pop('login_alert', None)
+        return render_template('login.j2',login_alert=login_alert)
+    elif request.method == 'POST':
+        username = request.form.get('user')
+        password = request.form.get('pwd')
+        if password == os.environ.get("PASSWORD"):
+            session['user'] = username
+            session.pop('login_alert', None)
+            return redirect(url_for('index'))
+        else:
+            session.pop('user', None)
+            session['login_alert'] = "Invalid Login!"
+            return redirect(url_for('do_login'))
+
+
+@app.route("/logout", methods=['GET'])
+def do_logout():
+    session.pop('user', None)
     return redirect(url_for('index'))
